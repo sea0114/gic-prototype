@@ -1,56 +1,31 @@
-"""Interface definitions for GIC components."""
+"""Paper-aligned interfaces for Generic Implicit Certificates (GIC)."""
 
 from __future__ import annotations
 
-from typing import Protocol, TypeVar
+from typing import Optional, Protocol, Tuple, TypeVar, Callable
 
-SecretKey = TypeVar("SecretKey")
-PublicKey = TypeVar("PublicKey")
-Encoded = TypeVar("Encoded")
-
-
-class KeyGen(Protocol[SecretKey, PublicKey]):
-    """Key generation interface: KeyGen(sk) -> pk."""
-
-    def __call__(self, sk: SecretKey) -> PublicKey:
-        ...
+H = TypeVar("H")  # element type of secret-key group 𝓗
+E = TypeVar("E")  # element type of public-key group 𝓔
 
 
-class SecretKeyGroupOps(Protocol[SecretKey]):
-    """Secret-key group operations and scalar action."""
-
-    def sk_add(self, left: SecretKey, right: SecretKey) -> SecretKey:
-        ...
-
-    def sk_neg(self, value: SecretKey) -> SecretKey:
-        ...
-
-    def sk_scalar_mul(self, scalar: int, value: SecretKey) -> SecretKey:
-        ...
+class KeyGen(Protocol[H, E]):
+    """Deterministic public-key derivation KeyGen : 𝓗 -> 𝓔."""
+    def __call__(self, sk: H) -> E: ...
 
 
-class PublicKeyGroupOps(Protocol[PublicKey]):
-    """Public-key group operations and scalar action."""
-
-    def pk_mul(self, left: PublicKey, right: PublicKey) -> PublicKey:
-        ...
-
-    def pk_inv(self, value: PublicKey) -> PublicKey:
-        ...
-
-    def pk_scalar_mul(self, scalar: int, value: PublicKey) -> PublicKey:
-        ...
+class HGroupOps(Protocol[H]):
+    """Secret-key group (𝓗, ⊕) operations."""
+    def zero(self) -> H: ...
+    def add(self, left: H, right: H) -> H: ...
+    def neg(self, value: H) -> H: ...
 
 
-class Encode(Protocol[Encoded]):
-    """Encoding interface: encode object into bytes."""
+class EGroupOps(Protocol[E]):
+    """Public-key group (𝓔, ⊗) operations."""
+    def one(self) -> E: ...
+    def mul(self, left: E, right: E) -> E: ...
+    def inv(self, value: E) -> E: ...
 
-    def encode(self, value: Encoded) -> bytes:
-        ...
 
-
-class Decode(Protocol[Encoded]):
-    """Decoding interface: decode bytes into object."""
-
-    def decode(self, data: bytes) -> Encoded:
-        ...
+Encode = Callable[[E, bytes], bytes]
+Decode = Callable[[bytes], Optional[Tuple[E, bytes]]]

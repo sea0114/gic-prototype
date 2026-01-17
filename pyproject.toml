@@ -10,10 +10,40 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [{name = "GIC Prototype"}]
+
+# Keep core dependency-free; instantiations are installed via extras.
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest"]
+dev = ["pytest>=7.0"]
+
+# DL-type (Schnorr) instantiation (curve-based group ops)
+dl = [
+  "ecdsa>=0.18.0",
+]
+
+# BLS-type instantiation on BLS12-381 G1 (no pairing needed for Fig. 1)
+bls = [
+  "py-ecc>=6.0.0",
+]
+
+# RSA-type (GQ) instantiation (key generation / big integers)
+rsa = [
+  "pycryptodome>=3.18.0",
+]
+
+# Benchmark/reporting helpers (optional, but convenient)
+bench = [
+  "numpy>=1.24.0",
+]
+
+# Convenience meta-extra
+all = [
+  "ecdsa>=0.18.0",
+  "py-ecc>=6.0.0",
+  "pycryptodome>=3.18.0",
+  "numpy>=1.24.0",
+]
 
 [tool.setuptools]
 package-dir = {"" = "src"}

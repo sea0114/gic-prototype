@@ -1,20 +1,20 @@
-"""Generic Implicit Certificate (GIC) prototype package."""
+"""Top-level package exports for gic-prototype.
 
-from .gic import PKRecon, SKGen, Setup, iCertGen
-from .interfaces import (
-    Decode,
-    Encode,
-    KeyGen,
-    PublicKeyGroupOps,
-    SecretKeyGroupOps,
-)
+Keep exports minimal and aligned with paper-based interfaces.
+"""
+
+from .interfaces import KeyGen, HGroupOps, EGroupOps, Encode, Decode
+from .core import Params, ViewU, ViewCA, Setup, iCertGen, SKGen, PKRecon
 
 __all__ = [
-    "Decode",
-    "Encode",
     "KeyGen",
-    "PublicKeyGroupOps",
-    "SecretKeyGroupOps",
+    "HGroupOps",
+    "EGroupOps",
+    "Encode",
+    "Decode",
+    "Params",
+    "ViewU",
+    "ViewCA",
     "Setup",
     "iCertGen",
     "SKGen",
