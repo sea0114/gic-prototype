@@ -1,5 +1,1 @@
-"""GQ instantiation placeholder."""
-
-from .gq import GQInstantiation
-
-__all__ = ["GQInstantiation"]
+from .inst import make_gq_params, gen_rsa_modulus
