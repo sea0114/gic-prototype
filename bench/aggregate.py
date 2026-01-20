@@ -6,7 +6,7 @@ import glob
 import math
 import os
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Tuple
+from typing import Dict, List, Tuple
 
 
 @dataclass(frozen=True)
@@ -19,6 +19,8 @@ class Row:
     rep: int
     elapsed_ns: int
     icert_len_bytes: int
+    pk_len_bytes: int
+    sk_len_bytes: int
 
 
 def _read_rows(paths: List[str]) -> List[Row]:
@@ -35,6 +37,8 @@ def _read_rows(paths: List[str]) -> List[Row]:
                 "rep",
                 "elapsed_ns",
                 "icert_len_bytes",
+                "pk_len_bytes",
+                "sk_len_bytes",
             }
             if not required.issubset(set(r.fieldnames or [])):
                 missing = required - set(r.fieldnames or [])
@@ -51,6 +55,8 @@ def _read_rows(paths: List[str]) -> List[Row]:
                         rep=int(d["rep"]),
                         elapsed_ns=int(d["elapsed_ns"]),
                         icert_len_bytes=int(d["icert_len_bytes"]),
+                        pk_len_bytes=int(d["pk_len_bytes"]),
+                        sk_len_bytes=int(d["sk_len_bytes"]),
                     )
                 )
     return rows
@@ -76,7 +82,11 @@ def _summarize(vals: List[int]) -> Dict[str, int]:
     vals_sorted = sorted(vals)
     n = len(vals_sorted)
     mean = int(round(sum(vals_sorted) / n))
-    median = vals_sorted[n // 2] if (n % 2 == 1) else int(round((vals_sorted[n // 2 - 1] + vals_sorted[n // 2]) / 2))
+    median = (
+        vals_sorted[n // 2]
+        if (n % 2 == 1)
+        else int(round((vals_sorted[n // 2 - 1] + vals_sorted[n // 2]) / 2))
+    )
     p95 = _percentile(vals_sorted, 0.95)
     p99 = _percentile(vals_sorted, 0.99)
     vmin = vals_sorted[0]
@@ -90,6 +100,18 @@ def _summarize(vals: List[int]) -> Dict[str, int]:
         "min_ns": vmin,
         "max_ns": vmax,
     }
+
+
+def _stable_len(vals: List[int]) -> int:
+    """
+    Choose a stable representative length from observed values.
+    - If there are non-zero values (typical for iCert-related ops), use min(nonzero).
+    - Else (e.g., Setup rows where iCert_len=0), return 0.
+    """
+    nonzero = [v for v in vals if v > 0]
+    if nonzero:
+        return min(nonzero)
+    return 0
 
 
 def main() -> None:
@@ -151,6 +173,8 @@ def main() -> None:
                 "min_ns",
                 "max_ns",
                 "icert_len_bytes",
+                "pk_len_bytes",
+                "sk_len_bytes",
             ],
         )
         w.writeheader()
@@ -159,9 +183,9 @@ def main() -> None:
             vals = [r.elapsed_ns for r in rs]
             stats = _summarize(vals)
 
-            # iCert length should be constant per scheme/params; take the mode-like stable choice
-            # (here: min of observed lengths to avoid accidental outliers).
-            icert_len = min(r.icert_len_bytes for r in rs)
+            icert_len = _stable_len([r.icert_len_bytes for r in rs])
+            pk_len = _stable_len([r.pk_len_bytes for r in rs])
+            sk_len = _stable_len([r.sk_len_bytes for r in rs])
 
             w.writerow(
                 {
@@ -177,6 +201,8 @@ def main() -> None:
                     "min_ns": stats["min_ns"],
                     "max_ns": stats["max_ns"],
                     "icert_len_bytes": icert_len,
+                    "pk_len_bytes": pk_len,
+                    "sk_len_bytes": sk_len,
                 }
             )
 

@@ -53,6 +53,26 @@ def _apply_security_profile(scheme: str, bits: int, lam: int, sec: int | None) -
     raise ValueError(f"Unsupported scheme={scheme}.")
 
 
+def _pk_sk_lengths_bytes(scheme_name: str, rsa_modulus: int | None = None) -> tuple[int, int]:
+    """
+    Return (pk_len_bytes, sk_len_bytes) under canonical encodings for each instantiation.
+
+    - schnorr (P-256): pk = compressed point (33 bytes), sk = scalar (32 bytes)
+    - bls (BLS12-381 G1): pk = compressed G1 (48 bytes), sk = scalar (32 bytes)
+    - gq (RSA-N): pk, sk = element mod N, byte-length = ceil(bitlen(N)/8)
+    """
+    if scheme_name == "schnorr":
+        return 33, 32
+    if scheme_name == "bls":
+        return 48, 32
+    if scheme_name == "gq":
+        if rsa_modulus is None:
+            raise ValueError("rsa_modulus must be provided for GQ.")
+        k = (rsa_modulus.bit_length() + 7) // 8
+        return k, k
+    raise ValueError(f"Unsupported scheme_name={scheme_name}.")
+
+
 def _write_row(
     w: csv.DictWriter,
     scheme: str,
@@ -63,6 +83,8 @@ def _write_row(
     rep: int,
     elapsed_ns: int,
     icert_len: int,
+    pk_len: int,
+    sk_len: int,
 ) -> None:
     w.writerow(
         {
@@ -74,12 +96,16 @@ def _write_row(
             "rep": rep,
             "elapsed_ns": elapsed_ns,
             "icert_len_bytes": icert_len,
+            "pk_len_bytes": pk_len,
+            "sk_len_bytes": sk_len,
         }
     )
 
 
-def _run_generic(cfg: BenchConfig, params, sample_H, scheme_name: str) -> None:
+def _run_generic(cfg: BenchConfig, params, sample_H, scheme_name: str, rsa_modulus: int | None = None) -> None:
     os.makedirs(os.path.dirname(cfg.out), exist_ok=True)
+
+    pk_len_bytes, sk_len_bytes = _pk_sk_lengths_bytes(scheme_name, rsa_modulus=rsa_modulus)
 
     with open(cfg.out, "w", newline="") as f:
         w = csv.DictWriter(
@@ -93,6 +119,8 @@ def _run_generic(cfg: BenchConfig, params, sample_H, scheme_name: str) -> None:
                 "rep",
                 "elapsed_ns",
                 "icert_len_bytes",
+                "pk_len_bytes",
+                "sk_len_bytes",
             ],
         )
         w.writeheader()
@@ -101,8 +129,35 @@ def _run_generic(cfg: BenchConfig, params, sample_H, scheme_name: str) -> None:
             is_warmup = 1 if i < cfg.warmup else 0
             rep = i if is_warmup else i - cfg.warmup
 
-            sk_C, pk_C = Setup(params, sample_H)
+            # ------------------------------------------------------------
+            # Setup (time it and record as a separate op row)
+            # ------------------------------------------------------------
+            setup_holder = {}
 
+            def _do_setup():
+                setup_holder["sk_C"], setup_holder["pk_C"] = Setup(params, sample_H)
+
+            t_setup = _timed_ns(_do_setup)
+            sk_C = setup_holder["sk_C"]
+            pk_C = setup_holder["pk_C"]
+
+            _write_row(
+                w,
+                scheme_name,
+                cfg.bits,
+                cfg.lam,
+                "Setup",
+                is_warmup,
+                rep,
+                t_setup,
+                0,  # no iCert at setup time
+                pk_len_bytes,
+                sk_len_bytes,
+            )
+
+            # ------------------------------------------------------------
+            # iCertGen
+            # ------------------------------------------------------------
             holder = {}
 
             def _do_icertgen():
@@ -114,8 +169,23 @@ def _run_generic(cfg: BenchConfig, params, sample_H, scheme_name: str) -> None:
             iCer = holder["iCer"]
             view_U = holder["view_U"]
 
-            _write_row(w, scheme_name, cfg.bits, cfg.lam, "iCertGen", is_warmup, rep, t_icert, len(iCer))
+            _write_row(
+                w,
+                scheme_name,
+                cfg.bits,
+                cfg.lam,
+                "iCertGen",
+                is_warmup,
+                rep,
+                t_icert,
+                len(iCer),
+                pk_len_bytes,
+                sk_len_bytes,
+            )
 
+            # ------------------------------------------------------------
+            # SKGen
+            # ------------------------------------------------------------
             holder2 = {}
 
             def _do_skgen():
@@ -124,14 +194,45 @@ def _run_generic(cfg: BenchConfig, params, sample_H, scheme_name: str) -> None:
             t_skgen = _timed_ns(_do_skgen)
             sk_U = holder2["sk_U"]
 
-            _write_row(w, scheme_name, cfg.bits, cfg.lam, "SKGen", is_warmup, rep, t_skgen, len(iCer))
+            _write_row(
+                w,
+                scheme_name,
+                cfg.bits,
+                cfg.lam,
+                "SKGen",
+                is_warmup,
+                rep,
+                t_skgen,
+                len(iCer),
+                pk_len_bytes,
+                sk_len_bytes,
+            )
 
+            # ------------------------------------------------------------
+            # PKRecon
+            # ------------------------------------------------------------
             def _do_pkrecon():
                 PKRecon(params, iCer, pk_C)
 
             t_pkrecon = _timed_ns(_do_pkrecon)
-            _write_row(w, scheme_name, cfg.bits, cfg.lam, "PKRecon", is_warmup, rep, t_pkrecon, len(iCer))
 
+            _write_row(
+                w,
+                scheme_name,
+                cfg.bits,
+                cfg.lam,
+                "PKRecon",
+                is_warmup,
+                rep,
+                t_pkrecon,
+                len(iCer),
+                pk_len_bytes,
+                sk_len_bytes,
+            )
+
+            # ------------------------------------------------------------
+            # Correctness check (same as your original logic)
+            # ------------------------------------------------------------
             if not is_warmup:
                 pk_U = PKRecon(params, iCer, pk_C)
                 assert pk_U is not None
@@ -141,7 +242,7 @@ def _run_generic(cfg: BenchConfig, params, sample_H, scheme_name: str) -> None:
 def run_gq(cfg: BenchConfig) -> None:
     N = gen_rsa_modulus(bits=cfg.bits)
     params, sample_H = make_gq_params(N=N, e_rsa=cfg.e_rsa, lam=cfg.lam)
-    _run_generic(cfg, params, sample_H, "gq")
+    _run_generic(cfg, params, sample_H, "gq", rsa_modulus=N)
 
 
 def run_schnorr(cfg: BenchConfig) -> None:
