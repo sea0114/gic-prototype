@@ -26,10 +26,10 @@ The prototype is intended **solely for research and evaluation purposes**.
 
 The repository structure mirrors the organization of the paper:
 
-- **Generic construction and notation**: Sections II–III  
-- **Security model and proofs**: Section IV-V  
-- **Instantiation examples**: Section VI  
-- **Performance evaluation**: Section VII  
+- **Generic construction and notation**: Sections III–IV  
+- **Security model and proofs**: Section V-VI  
+- **Instantiation examples**: Section VII  
+- **Performance evaluation**: Section VIII  
 
 The implementation follows exactly the issuance and reconstruction logic described in Fig. 1 of the paper.
 
