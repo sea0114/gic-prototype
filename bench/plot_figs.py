@@ -58,24 +58,41 @@ def _save(fig, stem: str):
 
 
 # ---- NEW: helper to apply hatches + BW-friendly legend ----
-def _apply_hatches_and_bw_legend(ax: plt.Axes, schemes_in_order: list[str], legend_title: str = "Scheme"):
-    # Pandas bar/barh creates one container per column (= per scheme)
+def _apply_hatches_and_bw_legend(
+    ax: plt.Axes,
+    schemes_in_order: list[str],
+    legend_title: str = "Scheme",
+):
+    handles = []
+
+    # Pandas bar creates one container per scheme (column)
     for i, cont in enumerate(ax.containers):
         if i >= len(schemes_in_order):
             break
+
         scheme = schemes_in_order[i]
         hatch = HATCHES.get(scheme, "")
+
+        # Use the first patch to extract the facecolor
+        sample_patch = cont.patches[0]
+        facecolor = sample_patch.get_facecolor()
+
         for p in cont.patches:
             p.set_hatch(hatch)
             p.set_edgecolor("black")
             p.set_linewidth(0.8)
 
-    # Replace legend with hatch-based handles (so legend still works in BW)
-    handles = [
-        Patch(facecolor="white", edgecolor="black", hatch=HATCHES.get(s, ""), label=s)
-        for s in schemes_in_order
-    ]
+        handles.append(
+            Patch(
+                facecolor=facecolor,
+                edgecolor="black",
+                hatch=hatch,
+                label=scheme,
+            )
+        )
+
     ax.legend(handles=handles, title=legend_title, frameon=False)
+
 
 
 def plot_fig1_cost_breakdown():
@@ -91,11 +108,18 @@ def plot_fig1_cost_breakdown():
     ax.set_title("Cost Breakdown of Implicit-Certificate Operations (Mean)")
     ax.grid(axis="y", linestyle="--", linewidth=0.5, alpha=0.7)
 
-    # NEW
-    _apply_hatches_and_bw_legend(ax, [str(c) for c in pivot.columns], legend_title="Scheme")
+    # ✅ NEW: force horizontal x-axis labels
+    ax.set_xticklabels(ax.get_xticklabels(), rotation=0)
+
+    _apply_hatches_and_bw_legend(
+        ax,
+        [str(c) for c in pivot.columns],
+        legend_title="Scheme",
+    )
 
     fig.tight_layout()
     _save(fig, "fig1_cost_breakdown")
+
 
 
 def plot_fig2_tail_latency_p95():
@@ -141,24 +165,37 @@ def plot_fig3_size_footprint():
     ax.set_title("Size Footprint of Public Materials and Keys")
     ax.grid(axis="x", linestyle="--", linewidth=0.5, alpha=0.7)
 
-    # NEW: apply hatches per *metric* (because barh columns are |iCer|,|pk|,|sk|)
+    # NEW: apply hatches per *metric* and build color-consistent legend
     metric_hatches = {"|iCer|": "///", "|pk|": "\\\\\\", "|sk|": "xx"}
+    handles = []
+
     for i, cont in enumerate(ax.containers):
-        # container order matches columns order in the plotted data
-        if i >= len(pivot.columns):
+        if i >= len(labels):
             break
-        col = labels[i]
-        hatch = metric_hatches.get(col, "")
+
+        label = labels[i]
+        hatch = metric_hatches.get(label, "")
+
+        # extract actual bar color from the first patch
+        sample_patch = cont.patches[0]
+        facecolor = sample_patch.get_facecolor()
+
         for p in cont.patches:
             p.set_hatch(hatch)
             p.set_edgecolor("black")
             p.set_linewidth(0.8)
 
-    handles = [
-        Patch(facecolor="white", edgecolor="black", hatch=metric_hatches[l], label=l)
-        for l in labels
-    ]
+        handles.append(
+            Patch(
+                facecolor=facecolor,
+                edgecolor="black",
+                hatch=hatch,
+                label=label,
+            )
+        )
+
     ax.legend(handles=handles, title="", frameon=False)
+
 
     fig.tight_layout()
     _save(fig, "fig3_size_footprint")
